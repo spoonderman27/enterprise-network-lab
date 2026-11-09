@@ -1,0 +1,25 @@
+! ============================================================
+! BR-SW  (Cisco 2960-24TT switch) - branch access switch
+! Kept simple: one LAN, user port hardened, unused ports off.
+! ============================================================
+enable
+configure terminal
+hostname BR-SW
+no ip domain-lookup
+service password-encryption
+enable secret LabEnable2026
+banner motd #Authorised access only (lab device)#
+!
+interface FastEthernet0/1
+ description Branch PC
+ switchport mode access
+ spanning-tree portfast
+ spanning-tree bpduguard enable
+!
+interface range FastEthernet0/2 - 24
+ shutdown
+interface GigabitEthernet0/2
+ shutdown
+!
+end
+write memory

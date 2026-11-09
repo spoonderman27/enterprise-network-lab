@@ -1,0 +1,28 @@
+! ============================================================
+! ISP  (Cisco 2911 router)
+! Plays the Internet provider. It only knows its own connected
+! networks, so private 10.x / 192.168.x addresses can only reach
+! the Internet through NAT, like in real life.
+! ============================================================
+enable
+configure terminal
+hostname ISP
+no ip domain-lookup
+!
+interface GigabitEthernet0/0
+ description Link to HQ-R1
+ ip address 198.51.100.1 255.255.255.252
+ no shutdown
+!
+interface GigabitEthernet0/1
+ description Link to BR-R1
+ ip address 198.51.100.5 255.255.255.252
+ no shutdown
+!
+interface GigabitEthernet0/2
+ description Internet server network
+ ip address 203.0.113.1 255.255.255.0
+ no shutdown
+!
+end
+write memory

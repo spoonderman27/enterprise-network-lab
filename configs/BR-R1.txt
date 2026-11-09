@@ -1,0 +1,81 @@
+! ============================================================
+! BR-R1  (Cisco 2911 router) - branch office router
+! Jobs: DHCP for the branch LAN, NAT to the Internet,
+! IPsec VPN to head office (mirror of HQ-R1), SSH.
+! BEFORE pasting: turn on the security licence and reload
+! (BUILD_GUIDE.md, step 3), otherwise the crypto lines fail.
+! ============================================================
+enable
+configure terminal
+hostname BR-R1
+no ip domain-lookup
+ip domain-name corp.local
+service password-encryption
+service timestamps log datetime msec
+enable secret LabEnable2026
+username admin secret LabAdmin2026
+banner motd #Authorised access only (lab device)#
+login block-for 120 attempts 3 within 60
+!
+! ---------- Interfaces ----------
+interface GigabitEthernet0/0
+ description Branch LAN (inside)
+ ip address 192.168.40.1 255.255.255.0
+ ip nat inside
+ no shutdown
+!
+interface GigabitEthernet0/1
+ description Link to ISP (outside)
+ ip address 198.51.100.6 255.255.255.252
+ ip nat outside
+ no shutdown
+!
+! ---------- Routing ----------
+ip route 0.0.0.0 0.0.0.0 198.51.100.5
+!
+! ---------- DHCP ----------
+! Branch PCs use the HQ DNS server (reached through the VPN)
+ip dhcp excluded-address 192.168.40.1 192.168.40.10
+ip dhcp pool BRANCH
+ network 192.168.40.0 255.255.255.0
+ default-router 192.168.40.1
+ dns-server 10.10.20.10
+!
+! ---------- NAT ----------
+! Traffic to HQ is NOT translated (VPN); everything else is
+access-list 102 deny ip 192.168.40.0 0.0.0.255 10.10.0.0 0.0.255.255
+access-list 102 permit ip 192.168.40.0 0.0.0.255 any
+ip nat inside source list 102 interface GigabitEthernet0/1 overload
+!
+! ---------- Site-to-site IPsec VPN to HQ (must match HQ-R1) ----------
+crypto isakmp policy 10
+ encryption aes 256
+ authentication pre-share
+ group 5
+crypto isakmp key VpnLabKey2026 address 198.51.100.2
+crypto ipsec transform-set VPN-SET esp-aes esp-sha-hmac
+access-list 110 permit ip 192.168.40.0 0.0.0.255 10.10.0.0 0.0.255.255
+crypto map VPN-MAP 10 ipsec-isakmp
+ set peer 198.51.100.2
+ set transform-set VPN-SET
+ match address 110
+interface GigabitEthernet0/1
+ crypto map VPN-MAP
+!
+! ---------- Management (SSH from HQ Staff or the branch LAN) ----------
+ip access-list standard MGMT-ONLY
+ permit 10.10.10.0 0.0.0.255
+ permit 192.168.40.0 0.0.0.255
+line console 0
+ login local
+ exec-timeout 15 0
+line vty 0 4
+ login local
+ transport input ssh
+ access-class MGMT-ONLY in
+ exec-timeout 15 0
+crypto key generate rsa general-keys modulus 1024
+ip ssh version 2
+!
+end
+write memory

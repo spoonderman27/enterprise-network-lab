@@ -1,0 +1,93 @@
+! ============================================================
+! HQ-ACC  (Cisco 2960-24TT switch) - head office access switch
+! Jobs: user ports in the right VLAN, port security, PortFast and
+! BPDU Guard, trunk to the core, management IP, SSH.
+! ============================================================
+enable
+configure terminal
+hostname HQ-ACC
+no ip domain-lookup
+ip domain-name corp.local
+service password-encryption
+enable secret LabEnable2026
+username admin secret LabAdmin2026
+banner motd #Authorised access only (lab device)#
+!
+! ---------- VLANs ----------
+vlan 10
+ name STAFF
+vlan 30
+ name GUEST
+vlan 99
+ name MGMT
+vlan 998
+ name NATIVE
+vlan 999
+ name PARKING
+!
+! ---------- Trunk to HQ-CORE ----------
+interface GigabitEthernet0/1
+ description Trunk to HQ-CORE
+ switchport mode trunk
+ switchport trunk native vlan 998
+ switchport trunk allowed vlan 10,30,99,998
+ switchport nonegotiate
+!
+! ---------- Staff ports ----------
+! Port security: at most 2 devices per port, MACs learned and kept (sticky)
+interface range FastEthernet0/1 - 2
+ description Staff PCs
+ switchport mode access
+ switchport access vlan 10
+ switchport port-security
+ switchport port-security maximum 2
+ switchport port-security mac-address sticky
+ switchport port-security violation restrict
+ spanning-tree portfast
+ spanning-tree bpduguard enable
+!
+! ---------- Guest port ----------
+interface FastEthernet0/11
+ description Guest
+ switchport mode access
+ switchport access vlan 30
+ switchport port-security
+ switchport port-security maximum 1
+ switchport port-security mac-address sticky
+ switchport port-security violation restrict
+ spanning-tree portfast
+ spanning-tree bpduguard enable
+!
+! ---------- Unused ports: parked in VLAN 999 and shut down ----------
+interface range FastEthernet0/3 - 10
+ switchport mode access
+ switchport access vlan 999
+ shutdown
+interface range FastEthernet0/12 - 24
+ switchport mode access
+ switchport access vlan 999
+ shutdown
+interface GigabitEthernet0/2
+ switchport mode access
+ switchport access vlan 999
+ shutdown
+!
+! ---------- Management IP (VLAN 99) and SSH from Staff only ----------
+interface Vlan99
+ description Management
+ ip address 10.10.99.2 255.255.255.0
+ no shutdown
+interface Vlan1
+ shutdown
+ip default-gateway 10.10.99.1
+ip access-list standard MGMT-ONLY
+ permit 10.10.10.0 0.0.0.255
+line vty 0 15
+ login local
+ transport input ssh
+ access-class MGMT-ONLY in
+crypto key generate rsa general-keys modulus 1024
+ip ssh version 2
+!
+end
+write memory

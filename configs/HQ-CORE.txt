@@ -1,0 +1,120 @@
+! ============================================================
+! HQ-CORE  (Cisco 3560-24PS multilayer switch) - head office core
+! Jobs: VLANs, routing between VLANs (SVIs), DHCP relay to HQ-R1,
+! OSPF with HQ-R1, Guest isolation ACL, trunk to the access switch.
+! ============================================================
+enable
+configure terminal
+hostname HQ-CORE
+no ip domain-lookup
+ip domain-name corp.local
+service password-encryption
+enable secret LabEnable2026
+username admin secret LabAdmin2026
+banner motd #Authorised access only (lab device)#
+!
+! ---------- VLANs ----------
+vlan 10
+ name STAFF
+vlan 20
+ name SERVERS
+vlan 30
+ name GUEST
+vlan 99
+ name MGMT
+vlan 998
+ name NATIVE
+vlan 999
+ name PARKING
+!
+! ---------- Guest isolation ----------
+! Guests may get an address (DHCP) and use the Internet,
+! but cannot reach any company network (HQ or branch).
+access-list 130 permit udp any any eq 67
+access-list 130 deny ip 10.10.30.0 0.0.0.255 10.10.0.0 0.0.255.255
+access-list 130 deny ip 10.10.30.0 0.0.0.255 192.168.40.0 0.0.0.255
+access-list 130 permit ip 10.10.30.0 0.0.0.255 any
+!
+! ---------- Routing between VLANs ----------
+ip routing
+interface Vlan10
+ description Staff gateway
+ ip address 10.10.10.1 255.255.255.0
+ ip helper-address 10.10.255.1
+ no shutdown
+interface Vlan20
+ description Servers gateway
+ ip address 10.10.20.1 255.255.255.0
+ no shutdown
+interface Vlan30
+ description Guest gateway (Internet only)
+ ip address 10.10.30.1 255.255.255.0
+ ip helper-address 10.10.255.1
+ ip access-group 130 in
+ no shutdown
+interface Vlan99
+ description Management
+ ip address 10.10.99.1 255.255.255.0
+ no shutdown
+!
+! ---------- Routed uplink to HQ-R1 ----------
+interface GigabitEthernet0/1
+ description Routed link to HQ-R1
+ no switchport
+ ip address 10.10.255.2 255.255.255.252
+ no shutdown
+!
+! ---------- Trunk to HQ-ACC ----------
+! Native VLAN moved to an unused VLAN (998) and DTP turned off
+interface GigabitEthernet0/2
+ description Trunk to HQ-ACC
+ switchport trunk encapsulation dot1q
+ switchport mode trunk
+ switchport trunk native vlan 998
+ switchport trunk allowed vlan 10,30,99,998
+ switchport nonegotiate
+!
+! ---------- Server port ----------
+interface FastEthernet0/10
+ description SRV1
+ switchport mode access
+ switchport access vlan 20
+ spanning-tree portfast
+!
+! ---------- Unused ports: parked in VLAN 999 and shut down ----------
+interface range FastEthernet0/1 - 9
+ switchport mode access
+ switchport access vlan 999
+ shutdown
+interface range FastEthernet0/11 - 24
+ switchport mode access
+ switchport access vlan 999
+ shutdown
+!
+! ---------- OSPF ----------
+! Advertises all HQ networks to HQ-R1 and learns the default route from it.
+! VLAN interfaces are passive: no OSPF hellos sent towards user devices.
+router ospf 1
+ router-id 2.2.2.2
+ network 10.10.10.0 0.0.0.255 area 0
+ network 10.10.20.0 0.0.0.255 area 0
+ network 10.10.30.0 0.0.0.255 area 0
+ network 10.10.99.0 0.0.0.255 area 0
+ network 10.10.255.0 0.0.0.3 area 0
+ passive-interface Vlan10
+ passive-interface Vlan20
+ passive-interface Vlan30
+ passive-interface Vlan99
+!
+! ---------- Management (SSH from Staff VLAN only) ----------
+ip access-list standard MGMT-ONLY
+ permit 10.10.10.0 0.0.0.255
+line vty 0 15
+ login local
+ transport input ssh
+ access-class MGMT-ONLY in
+crypto key generate rsa general-keys modulus 1024
+ip ssh version 2
+!
+end
+write memory
